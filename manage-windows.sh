@@ -44,8 +44,12 @@ AVD_NAME="${AVD_NAME:-{{AVD_NAME}}}"
 # JAVA_HOME — look in typical Windows install locations
 if [ -z "${JAVA_HOME:-}" ]; then
   for p in \
+    "$HOME/jdk21" \
+    "$HOME/jdk17" \
     "/c/Program Files/Android/Android Studio/jbr" \
     "/c/Users/$USER/AppData/Local/Programs/Android Studio/jbr" \
+    "/c/Program Files/Eclipse Adoptium/jdk-21"* \
+    "/c/Program Files/Java/jdk-21"* \
     "/c/Program Files/Eclipse Adoptium/jdk-17"* \
     "/c/Program Files/Java/jdk-17"*; do
     if [ -d "$p" ]; then export JAVA_HOME="$p"; break; fi
@@ -234,6 +238,13 @@ cmd_sync() {
   ok "Web files copied."
   cd "$PROJECT_DIR"
   [ -d "node_modules/@capacitor/cli" ] || { info "npm install..."; npm install; }
+  if [ ! -d "$ANDROID_DIR" ]; then
+    info "android/ missing — running 'npx cap add android' first..."
+    npx cap add android
+    if [ -x "$PROJECT_DIR/_patch_signing.py" ]; then
+      python3 "$PROJECT_DIR/_patch_signing.py" "$ANDROID_DIR/app/build.gradle"
+    fi
+  fi
   npx cap sync android
   ok "Synced."
   pause

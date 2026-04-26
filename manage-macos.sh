@@ -16,6 +16,15 @@ APP_ID="${APP_ID:-org.workshopdiy.{{APPID_SEGMENT}}}"
 AVD_NAME="${AVD_NAME:-{{AVD_NAME}}}"
 
 # ---------- discover toolchain ----------
+# Capacitor 8 needs JDK 21+. Try user-local first, then Android Studio's bundled JBR.
+if [ -z "${JAVA_HOME:-}" ]; then
+  for p in "$HOME/jdk21" "$HOME/jdk17" \
+           "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
+           /Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home \
+           /Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home; do
+    [ -d "$p" ] && export JAVA_HOME="$p" && break
+  done
+fi
 export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
 export ANDROID_HOME="${ANDROID_HOME:-/usr/local/share/android-commandlinetools}"
 export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
@@ -184,6 +193,14 @@ cmd_sync() {
     npm install
   fi
 
+  if [ ! -d "$ANDROID_DIR" ]; then
+    info "android/ missing — running 'npx cap add android' first..."
+    npx cap add android
+    if [ -x "$PROJECT_DIR/_patch_signing.py" ]; then
+      python3 "$PROJECT_DIR/_patch_signing.py" "$ANDROID_DIR/app/build.gradle"
+    fi
+  fi
+
   info "Running: npx cap sync android"
   npx cap sync android
 
@@ -231,6 +248,9 @@ cmd_build_release() {
     confirm "Build unsigned anyway?" || { pause; return; }
   fi
 
+  if [ -x "$PROJECT_DIR/_patch_signing.py" ]; then
+    python3 "$PROJECT_DIR/_patch_signing.py" "$ANDROID_DIR/app/build.gradle"
+  fi
   cd "$ANDROID_DIR"
   echo "sdk.dir=$ANDROID_HOME" > local.properties
   ./gradlew bundleRelease

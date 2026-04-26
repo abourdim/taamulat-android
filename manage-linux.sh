@@ -24,12 +24,13 @@ else PKG_MGR="unknown"; PKG_INSTALL="echo manual-install-needed:"; fi
 
 # ---------- discover toolchain ----------
 # Prefer Android Studio's embedded JDK if installed
-for p in "$HOME/android-studio/jbr" "/opt/android-studio/jbr" "/usr/local/android-studio/jbr"; do
+for p in "$HOME/jdk21" "$HOME/jdk17" "$HOME/android-studio/jbr" "/opt/android-studio/jbr" "/usr/local/android-studio/jbr"; do
   [ -d "$p" ] && export JAVA_HOME="$p" && break
 done
-# Fall back to system java-17
+# Fall back to system JDK (Capacitor 8 needs JDK 21+; JDK 17 may work for older AGP)
 if [ -z "${JAVA_HOME:-}" ]; then
-  for p in /usr/lib/jvm/java-17-openjdk* /usr/lib/jvm/temurin-17-jdk* /usr/lib/jvm/default-java; do
+  for p in /usr/lib/jvm/java-21-openjdk* /usr/lib/jvm/temurin-21-jdk* \
+           /usr/lib/jvm/java-17-openjdk* /usr/lib/jvm/temurin-17-jdk* /usr/lib/jvm/default-java; do
     [ -d "$p" ] && export JAVA_HOME="$p" && break
   done
 fi
@@ -173,6 +174,14 @@ cmd_sync() {
   ok "Web files copied."
   cd "$PROJECT_DIR"
   [ -d "node_modules/@capacitor/cli" ] || { info "npm install..."; npm install; }
+  if [ ! -d "$ANDROID_DIR" ]; then
+    info "android/ missing — running 'npx cap add android' first..."
+    npx cap add android
+    # Idempotently wire signing config so future bundleRelease produces signed AABs
+    if [ -x "$PROJECT_DIR/_patch_signing.py" ]; then
+      python3 "$PROJECT_DIR/_patch_signing.py" "$ANDROID_DIR/app/build.gradle"
+    fi
+  fi
   npx cap sync android
   ok "Android project refreshed."
   pause
@@ -197,6 +206,10 @@ cmd_build_release() {
   if [ ! -f "$ANDROID_DIR/keystore.properties" ]; then
     warn "keystore.properties missing — AAB will be unsigned."
     confirm "Build unsigned anyway?" || { pause; return; }
+  fi
+  # Idempotent signing wire-up (no-op if already patched)
+  if [ -x "$PROJECT_DIR/_patch_signing.py" ]; then
+    python3 "$PROJECT_DIR/_patch_signing.py" "$ANDROID_DIR/app/build.gradle"
   fi
   cd "$ANDROID_DIR"
   echo "sdk.dir=$ANDROID_HOME" > local.properties
